@@ -1,0 +1,3 @@
+The model only use x as output
+dataset_nosum: no sum model, 1attn without tanh, absmax, 3layers.
+frankenstein_nosum need to re-evaluate the lspool, because the attention mechinism is changed.
