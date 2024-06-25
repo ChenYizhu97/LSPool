@@ -1,3 +1,0 @@
-lspool_3v_sum: hidden=1, mean agg, agg and transform, no tanh for dlspool, w1 and tanh for lspool, sum classifier.
-lspool_3v_sim: hidden=1, mean agg, agg and transform, no tanh for dlspool, simple classifier.
-dlspool_b+b_notanh, no tanh for score, bias and bias. hidden = 1
