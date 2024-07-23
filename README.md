@@ -28,7 +28,7 @@ $$f_2 = w_2*maxagg(abs(x_j-x_i)) \quad for \quad j \ \in \ N \left( i \right)$$
 
 $$f_3 = w_3*meanagg(e_{ij}) \quad for \quad j \ \in \ N \left( i \right)$$
 
-$$score_i = w*concate \left( f_1, f_2, f_3 \right)$$
+$$score_i = tanh(w*elu(concate \left( f_1, f_2, f_3 \right)))$$
 
 where $x_i$ is the attribute of node $i$, $e_{ij}$ is the attribute of edge that connects node $i$, and $j$ and $N\left(i\right)$ is the one-hop neighbour of node $i$.
 $w_1$, $w_2$ are learnable vectors of size $\left(f_x, 1\right)$, where $f_x$ is the dimension of node attributes. 
