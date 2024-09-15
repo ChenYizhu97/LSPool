@@ -3,13 +3,12 @@ import typer
 from typing_extensions import Optional, Annotated
 
 
-def _read_jsonstream(file:str):
+def _load_jsonstream(file:str):
     with open(file, mode="r") as f:
         json_strs = f.readlines()
         json_objs = [json.loads(json_str) for json_str in json_strs]
     return json_objs
 
-# replace x["pool"]["pool"] to x["method"]
 
 def _filter_pool(pool:str, data:dict):
     data = filter(lambda x: x["pool"]["method"] == pool, data)
@@ -38,8 +37,9 @@ def main(
         dataset:Annotated[Optional[str], typer.Option()] = None,
         comment:Annotated[Optional[str], typer.Option()] = None,
     ):
-    # show the experiments results for given pooling method 
-    records = _read_jsonstream(file)
+    # show the experiments results for given conditions
+
+    records = _load_jsonstream(file)
     if dataset is not None:
         records = _filter_dataset(dataset, records)
     if pool is not None:

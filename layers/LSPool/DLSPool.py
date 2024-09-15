@@ -54,6 +54,7 @@ class DLSPooling(torch.nn.Module):
         s, _ = to_dense_batch(s, batch)
         adj = to_dense_adj(edge_index, batch, edge_attr)
         
+        # matrix multiplication for producing coarsened graph
         out, out_adj = dense_connect(x, adj, s, mask)
         
         # transform back to sparse mode

@@ -2,8 +2,9 @@ from typing import Optional, Union
 import torch
 from torch import Tensor
 from torch.nn import Linear
-from torch_geometric.nn import MessagePassing, MeanAggregation, MaxAggregation, SoftmaxAggregation
+from torch_geometric.nn import MessagePassing, MeanAggregation, MaxAggregation, SoftmaxAggregation, SumAggregation
 from torch_geometric.nn.resolver import activation_resolver
+from .AttnAggregation import AttnAggregation
 
 eps=1e-7
 
@@ -29,24 +30,31 @@ class LSSMP(MessagePassing):
         ):
         super().__init__(aggr=None, *args, **kwargs)
 
-        hidden_channels = 1 
-        #if k is None else k
+        hidden_channels = 128 
+        #if k (clusters number) is defined, the output of this layer is the assignment matrix rather than scores.
+        out_dim = 1 if k is None else k
 
-        self.w_central = Linear(in_channels, hidden_channels)
-        self.w_diff = Linear(in_channels, hidden_channels)
+        self.L_q = Linear(in_channels, hidden_channels)
+        self.L_k = Linear(in_channels, hidden_channels)
+
+        self.L_d = Linear(in_channels, hidden_channels)
+        self.L_fd = Linear(hidden_channels, hidden_channels)
+        
+        self.L_sx = Linear(hidden_channels, 1)
+        self.L_sd = Linear(hidden_channels, 1)
 
         #nonlinearity
         self.nonlinearity = activation_resolver(nonlinearity)
-        self.mean_agg = MeanAggregation()
-        self.max_agg = MaxAggregation()
-        self.softmax_agg = SoftmaxAggregation(learn=True)
-
+        self.sum_agg = SumAggregation()
+        self.attn_agg = AttnAggregation()
         if in_channels_edge is not None:
-            self.w_edge = Linear(in_channels_edge, hidden_channels)
-            self.w_localset = Linear(3*hidden_channels, 1) if k is None else Linear(3*hidden_channels, k)
+            self.L_fe = Linear(in_channels, hidden_channels)
+            self.L_se = Linear(hidden_channels, 1)
+            self.L_s = Linear(3, out_dim)
         else:
-            self.w_edge = None
-            self.w_localset = Linear(2*hidden_channels, 1) if k is None else Linear(2*hidden_channels, k)
+            self.L_fe = None
+            self.L_se = None
+            self.L_s = Linear(2, out_dim)
 
         #tanh?
         self.act = activation_resolver(act) if act is not None else None
@@ -62,58 +70,68 @@ class LSSMP(MessagePassing):
             *args, 
             **kwargs
         ):
-        feat_x = self.w_central(x)
-        feat_x = self.nonlinearity(feat_x)
 
-        feat_diff, feat_edge = self.propagate(edge_index=edge_index, edge_attr=edge_attr, x=x, *args, **kwargs)
-        
-        
-        # concatenate features
-        if feat_edge is None:
-            feat_localset = torch.concat((feat_x, feat_diff), -1)
-        else:
-            feat_localset = torch.concat((feat_x, feat_diff, feat_edge), -1)
-
-        scores = self.w_localset(feat_localset)
-        if self.act is not None: scores = self.act(scores)
+        scores = self.propagate(edge_index=edge_index, edge_attr=edge_attr, x=x, *args, **kwargs)
 
         return scores
         
 
 
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr_j:Optional[Tensor]) -> Tensor:
-        diff = abs(x_j-x_i)
-        #diff_norm = diff/diff.norm(dim=-1, p=2).unsqueeze(-1)
-        #diff_norm = torch.norm(diff, p=2, dim=1) + eps
-        # print(diff_norm.size())
-        #diff = torch.div(diff, diff_norm.unsqueeze(-1))
-        #print(diff)
-        return diff, edge_attr_j
+        diff = self.nonlinearity(self.L_d(x_j)) - self.nonlinearity(self.L_d(x_i))
+        feat_diff = self.nonlinearity(self.L_fd(diff))
+
+        q_x_i = self.nonlinearity(self.L_q(x_i))
+        k_x_j = self.nonlinearity(self.L_k(x_j))
+        similarity = (q_x_i * k_x_j).sum(dim = -1).unsqueeze(-1)
+
+        if edge_attr_j is not None:
+            feat_e = self.nonlinearity(self.L_fe(edge_attr_j))
+        else:
+            feat_e = None
+
+        return similarity, x_j, feat_diff, feat_e
     
     def aggregate(self, inputs: Tensor, index: Tensor, ptr: Tensor | None = None, dim_size: int | None = None) -> Tensor:
 
-        diff, edge = inputs
-        #diff = self.mean_agg.forward(diff, index=index, ptr=ptr, dim_size=dim_size)
-        #diff = self.max_agg.forward(diff, index=index, ptr=ptr, dim_size=dim_size)
-        diff = self.max_agg.forward(diff, index=index, ptr=ptr, dim_size=dim_size)
-        diff = self.w_diff(diff)
-        diff = self.nonlinearity(diff)
+        similarity, x_j, feat_diff, feat_e = inputs
 
-        if edge is not None:
-            edge = self.mean_agg.forward(edge, index=index, ptr=ptr, dim_size=dim_size)
+        feat_x = self.attn_agg.forward(similarity, x_j, index=index, ptr=ptr, dim_size=dim_size)
+        feat_diff = self.sum_agg.forward(feat_diff, index=index, ptr=ptr, dim_size=dim_size)
+        
+        if feat_e is not None:
+            feat_e = self.sum_agg.forward(feat_e, index=index, ptr=ptr, dim_size=dim_size)
 
-            edge = self.w_edge(edge)
-            edge = self.nonlinearity(edge)
-        else:
-            edge = None
-
-        return diff, edge
+        return feat_x, feat_diff, feat_e
     
+    def update(self, inputs: Tensor) -> Tensor:
+        feat_x, feat_diff, feat_e = inputs
+
+        #score for each feature
+        s_x = self.nonlinearity(self.L_sx(feat_x))
+        s_d = self.nonlinearity(self.L_sd(feat_diff))
+
+        if feat_e is not None:
+            s_e = self.nonlinearity(self.L_se(feat_e))
+            s = torch.concatenate((s_x, s_d, s_e), -1)
+        else:
+            s = torch.concatenate((s_x, s_d), -1)
+
+        scores = self.L_s(s)
+        if self.act is not None:
+            scores = self.act(scores)
+
+        return scores
 
     def reset_parameters(self):
-        self.w_central.reset_parameters()
-        self.w_diff.reset_parameters()
-        self.w_localset.reset_parameters()
-        self.softmax_agg.reset_parameters()
-        if self.w_edge: self.w_edge.reset_parameters()
+        self.L_d.reset_parameters()
+        self.L_k.reset_parameters()
+        self.L_q.reset_parameters()
+        self.L_fd.reset_parameters()
+        if self.L_fe is not None: self.L_fe.reset_parameters()
+        self.L_sd.reset_parameters()
+        self.L_sx.reset_parameters()
+        if self.L_se is not None: self.L_se.reset_parameters()
+        self.L_s.reset_parameters()
+        
         

@@ -18,6 +18,9 @@ from typing_extensions import Annotated, Optional
 TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD"]
 POOLING = ["nopool", "lspool", "topkpool", "sagpool", "diffpool", "mincutpool", "densepool", "dlspool", "slspool", "sparsepool"]
 
+app = typer.Typer(pretty_exceptions_enable=False)
+
+@app.command()
 def main(
         pooling: Annotated[str, typer.Option()] = "nopool",
         pool_ratio: Annotated[float, typer.Option()] = "0.5",
@@ -125,4 +128,4 @@ def main(
             print(json_str, file=file_to_save)
         
 if __name__ == "__main__":
-    typer.run(main)
+    app()

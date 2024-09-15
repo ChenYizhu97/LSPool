@@ -5,7 +5,8 @@ from torch.nn import ModuleList
 from torch_geometric.nn import MLP 
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.data import Data
-from LSPool_pyg.layers.resolver import conv_resolver, pool_resolver
+#from LSPool.layers.resolver import conv_resolver, pool_resolver
+from layers.resolver import conv_resolver, pool_resolver
 from typing import Optional
 from torch_geometric.nn.pool import global_mean_pool
 
