@@ -49,10 +49,19 @@ def load_seeds(
 ) -> list[int]:
     with open(seeds, "a+") as f:
         f.seek(0)
-        raw_seeds = f.readline()
-        seeds = raw_seeds.split(' ')[:-1]
-        seeds = [int(seed) for seed in seeds]
+        #strip space
+        raw_seeds = f.readline().strip()
+        seeds = raw_seeds.split(' ')
+
+        # situation the seed file is empty
+        if seeds[0] == '':
+            seeds = []
+
+        
         n_seeds = len(seeds)
+        if n_seeds > 0 :
+            seeds = [int(seed) for seed in seeds]
+        
         # generate new seeds if there are not enough seeds in file.
         if runs > n_seeds:
             seeds_generated= list(np.random.random_integers(1, 100, runs - n_seeds))

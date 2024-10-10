@@ -2,7 +2,7 @@ from typing import Optional, Union
 import torch
 from torch import Tensor
 from torch.nn import Linear
-from torch_geometric.nn import MessagePassing, MeanAggregation, MaxAggregation, SoftmaxAggregation, SumAggregation
+from torch_geometric.nn import MessagePassing, SumAggregation
 from torch_geometric.nn.resolver import activation_resolver
 from .AttnAggregation import AttnAggregation
 
@@ -45,6 +45,7 @@ class LSSMP(MessagePassing):
 
         #nonlinearity
         self.nonlinearity = activation_resolver(nonlinearity)
+
         self.sum_agg = SumAggregation()
         self.attn_agg = AttnAggregation()
         if in_channels_edge is not None:
@@ -58,7 +59,6 @@ class LSSMP(MessagePassing):
 
         #tanh?
         self.act = activation_resolver(act) if act is not None else None
-        
         self.reset_parameters()
 
     
@@ -98,10 +98,11 @@ class LSSMP(MessagePassing):
 
         feat_x = self.attn_agg.forward(similarity, x_j, index=index, ptr=ptr, dim_size=dim_size)
         feat_diff = self.sum_agg.forward(feat_diff, index=index, ptr=ptr, dim_size=dim_size)
-        
+        #feat_diff = self.attn_agg.forward(similarity, feat_diff, index=index, ptr=ptr, dim_size=dim_size)
         if feat_e is not None:
             feat_e = self.sum_agg.forward(feat_e, index=index, ptr=ptr, dim_size=dim_size)
-
+            #feat_e = self.attn_agg.forward(similarity, feat_e, index=index, ptr=ptr, dim_size=dim_size)
+            
         return feat_x, feat_diff, feat_e
     
     def update(self, inputs: Tensor) -> Tensor:
